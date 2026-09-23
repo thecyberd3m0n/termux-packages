@@ -419,13 +419,24 @@ jobs:
           [ -f "$archive" ] && tar xf "$archive" || true
         done
 
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+        git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git repo || {
+          mkdir -p repo
+          cd repo
+          git init
+          git checkout -b gh-pages
+          cd "$ROOT_DIR"
+        }
+
         mkdir -p "$ROOT_DIR/repo/dists/stable/main/binary-aarch64"
         mkdir -p "$ROOT_DIR/repo/dists/stable/main/binary-arm"
         mkdir -p "$ROOT_DIR/repo/dists/stable/main/binary-i686"
         mkdir -p "$ROOT_DIR/repo/dists/stable/main/binary-x86_64"
         mkdir -p "$ROOT_DIR/repo/pool/main"
 
-        cp debs/*.deb "$ROOT_DIR/repo/pool/main/" 2>/dev/null || true
+        cp -f debs/*.deb "$ROOT_DIR/repo/pool/main/" 2>/dev/null || true
 
         cd "$ROOT_DIR/repo"
         for arch in aarch64 arm i686 x86_64; do
@@ -436,13 +447,7 @@ jobs:
         cd "$ROOT_DIR/repo/dists/stable"
         apt-ftparchive release . > Release
 
-        cd "$ROOT_DIR"
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-        git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git gh-pages-repo
-        cp -r "$ROOT_DIR/repo/dists" "$ROOT_DIR/repo/pool" gh-pages-repo/
-        cd gh-pages-repo
+        cd "$ROOT_DIR/repo"
         git add .
         git commit -m "Publish APT repository update [${{ github.sha }}]" || true
-        git push origin gh-pages
+        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git gh-pages
