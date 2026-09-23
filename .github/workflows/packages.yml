@@ -404,7 +404,7 @@ jobs:
       queue: max
     permissions:
       contents: read
-    if: github.repository == 'termux/termux-packages' && github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master'
     needs: build
     runs-on: ubuntu-slim
     steps:
@@ -414,58 +414,41 @@ jobs:
       uses: actions/download-artifact@v8
       with:
         path: ./
-    - name: Upload to packages.termux.dev
+    - name: Install apt-utils and publish to GitHub Pages
       env:
-        REPOSITORY_URL: https://packages.termux.dev/aptly-api
-        GITHUB_SHA: ${{ github.sha }}
-        APTLY_API_AUTH: ${{ secrets.APTLY_API_AUTH }}
-        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        source scripts/aptly_api.sh
+        sudo apt-get update
+        sudo apt-get install -y apt-utils git
 
         for archive in debs-*/debs-{aarch64,arm,i686,x86_64}-${{ github.sha }}.tar; do
-          tar xf "$archive"
+          [ -f "$archive" ] && tar xf "$archive" || true
         done
 
-        for repo in $(jq --raw-output 'del(.pkg_format) | keys | .[]' repo.json); do
-          export REPOSITORY_NAME=$(jq --raw-output '.["'$repo'"].name' repo.json)
-          export REPOSITORY_DISTRIBUTION=$(jq --raw-output '.["'$repo'"].distribution' repo.json)
+        mkdir -p repo/dists/stable/main/binary-aarch64
+        mkdir -p repo/dists/stable/main/binary-arm
+        mkdir -p repo/dists/stable/main/binary-i686
+        mkdir -p repo/dists/stable/main/binary-x86_64
+        mkdir -p repo/pool/main
 
-          # Upload file to temporary directory.
-          uploaded_files=false
-          shopt -s nullglob
+        cp debs/*.deb repo/pool/main/ 2>/dev/null || true
 
-          if [ -f debs/built_${REPOSITORY_NAME}_packages.txt ]; then
-            for filename in $(cat debs/built_${REPOSITORY_NAME}_packages.txt | sed -E 's/(..*)/debs\/\1_\*.deb debs\/\1-static_\*.deb/g'); do
-              if ! aptly_upload_file "$filename"; then
-                exit 1
-              fi
-
-              uploaded_files=true
-            done
-            shopt -u nullglob
-
-            # Publishing repository changes.
-            if [ "$uploaded_files" = "true" ]; then
-              if ! aptly_add_to_repo; then
-                exit 1
-              fi
-
-              # Usually temporary directory is deleted automatically, but in certain cases it is left.
-              aptly_delete_dir
-
-              # Final part to make changes appear in web root.
-              if ! aptly_publish_repo; then
-                exit 1
-              fi
-
-              # Publish to staging repo if we haven't already
-              if [[ "$REPOSITORY_DISTRIBUTION" != "staging" ]]; then
-                REPOSITORY_DISTRIBUTION=staging
-                if ! aptly_publish_repo; then
-                  exit 1
-                fi
-              fi
-            fi
-          fi
+        cd repo
+        for arch in aarch64 arm i686 x86_64; do
+          apt-ftparchive --arch $arch packages pool/main > dists/stable/main/binary-$arch/Packages
+          gzip -k -f dists/stable/main/binary-$arch/Packages
         done
+
+        cd dists/stable
+        apt-ftparchive release . > Release
+
+        cd ../..
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+        git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git gh-pages-repo
+        cp -r repo/dists repo/pool gh-pages-repo/
+        cd gh-pages-repo
+        git add .
+        git commit -m "Publish APT repository update [${{ github.sha }}]" || true
+        git push origin gh-pages
