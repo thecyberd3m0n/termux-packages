@@ -413,33 +413,35 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y apt-utils git
 
+        ROOT_DIR="$(pwd)"
+
         for archive in debs-*/debs-{aarch64,arm,i686,x86_64}-${{ github.sha }}.tar; do
           [ -f "$archive" ] && tar xf "$archive" || true
         done
 
-        mkdir -p repo/dists/stable/main/binary-aarch64
-        mkdir -p repo/dists/stable/main/binary-arm
-        mkdir -p repo/dists/stable/main/binary-i686
-        mkdir -p repo/dists/stable/main/binary-x86_64
-        mkdir -p repo/pool/main
+        mkdir -p "$ROOT_DIR/repo/dists/stable/main/binary-aarch64"
+        mkdir -p "$ROOT_DIR/repo/dists/stable/main/binary-arm"
+        mkdir -p "$ROOT_DIR/repo/dists/stable/main/binary-i686"
+        mkdir -p "$ROOT_DIR/repo/dists/stable/main/binary-x86_64"
+        mkdir -p "$ROOT_DIR/repo/pool/main"
 
-        cp debs/*.deb repo/pool/main/ 2>/dev/null || true
+        cp debs/*.deb "$ROOT_DIR/repo/pool/main/" 2>/dev/null || true
 
-        cd repo
+        cd "$ROOT_DIR/repo"
         for arch in aarch64 arm i686 x86_64; do
           apt-ftparchive --arch $arch packages pool/main > dists/stable/main/binary-$arch/Packages
           gzip -k -f dists/stable/main/binary-$arch/Packages
         done
 
-        cd dists/stable
+        cd "$ROOT_DIR/repo/dists/stable"
         apt-ftparchive release . > Release
 
-        cd ../..
+        cd "$ROOT_DIR"
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
         git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git gh-pages-repo
-        cp -r repo/dists repo/pool gh-pages-repo/
+        cp -r "$ROOT_DIR/repo/dists" "$ROOT_DIR/repo/pool" gh-pages-repo/
         cd gh-pages-repo
         git add .
         git commit -m "Publish APT repository update [${{ github.sha }}]" || true
