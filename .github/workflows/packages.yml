@@ -6,20 +6,12 @@ on:
     - master
     - dev
     - 'dev/**'
-    paths:
-    - 'packages/**'
-    - 'root-packages/**'
-    - 'x11-packages/**'
   pull_request:
-    paths:
-    - 'packages/**'
-    - 'root-packages/**'
-    - 'x11-packages/**'
   workflow_dispatch:
     inputs:
       packages:
         description: "A space-separated names of packages selected for rebuilding"
-        required: true
+        required: false
       free-space:
         description: "Free space even if not building large package (useful when building a large number of packages)"
         type: boolean
